@@ -33,16 +33,16 @@ class Process(object):
         '''
         if not time:
             time = self.left_time
-        current = min(self.left_time, time)
+        current_use = min(self.left_time, time)
         self.state = State.RUNINIG
         echo and print(self)
-        skip or sleep(0.01*current)
-        self.runtime += current
+        skip or sleep(0.01*current_use)
+        self.runtime += current_use
         if self.runtime == self.need_time:
             self.state = State.FINISH
         else:
             self.state = State.PAUSE
-        return self.state
+        return current_use
 
     def is_finish(self):
         return self.state == State.FINISH
