@@ -105,6 +105,35 @@ def sjf(jobs: list):
     print("平均带权周转时间: ", average(jobs, lambda j: j.weight_time))
     print("!! SJF FINISHED !!")
 
+def rr(jobs: list,time_slice=2):
+    '''模拟RR调度算法调度程序
+    '''
+    import queue
+    ready_queue = queue.SimpleQueue()
+    for job in jobs:
+        ready_queue.put(job)
+    current_time = 0
+    # 按照到到达时间模拟执行进程并记录时间
+    while not ready_queue.empty():
+        job:JobState = ready_queue.get()
+        print(f"\n时间片:[{current_time}->{current_time+time_slice}]")
+        job.start_time = min((current_time,job.start_time))
+        used=job.pcb.run(time_slice,echo=True)
+        if job.pcb.is_finish():
+            # 
+            job.finish_time = current_time + used
+            print(f"{used!= time_slice and '提前'}结束:{job}")
+        else:
+            ready_queue.put(job)
+        current_time+= used
+    # 输出每个进程的完成时间, 周转时间 ,带权周转时间
+    for j in jobs:
+        print(j)
+    # 计算平均周转时间和平均带权周转时间
+    print("平均周转时间: ", average(jobs, lambda j: j.whole_time))
+    print("平均带权周转时间: ", average(jobs, lambda j: j.weight_time))
+
+    print("!! RR FINISHED !!")
 
 if __name__ == "__main__":
     jobs_josn = []
@@ -120,3 +149,5 @@ if __name__ == "__main__":
     [job.reset() for job in jobs]
 
     sjf(jobs)
+    [job.reset() for job in jobs]
+    rr(jobs,4)
