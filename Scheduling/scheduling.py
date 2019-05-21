@@ -1,9 +1,4 @@
-try:
-    from process import Process
-except ImportError:
-    import sys
-    sys.path.append('..')
-    from process import Process
+from Process import Process
 
 
 class JobState:
@@ -51,89 +46,99 @@ def average(iters, key=lambda x: x):
     from functools import reduce
     return reduce(lambda x, y: x+y, [key(i) for i in iters])/len(iters)
 
+class JobScheduling:
+    _name = "JobScheduling"
+    def __init__(self, jobs:list,timestamp=0):
+        self.jobs = jobs
+        self.timestamp = timestamp
+    
+    def run(self):
+        '''fire all jobs
+        '''
+        for job in jobs:
+            job.start_time = timestamp
+            timestamp+=job.pcb.run()
+            job.finish_time = timestamp
+            
+    def launch(self):
+        '''launch this scheduling machine
+        '''
+        print(self._name, "strarted!")
+        self.run()
+        # 输出每个进程的完成时间, 周转时间 ,带权周转时间
+        for j in self.jobs:
+            print(j)
+        # 计算平均周转时间和平均带权周转时间
+        print("平均周转时间: ", average(jobs, lambda j: j.whole_time))
+        print("平均带权周转时间: ", average(jobs, lambda j: j.weight_time))
+        print(self._name, "finished!")
 
-def fcfs(jobs: list):
-    '''模拟FCFS调度算法调度程序
+
+class FCFSScheduling(JobScheduling):
+    '''FCFS 调度算法的实现
     '''
-    current_time = 0
-    # 按照到到达时间模拟执行进程并记录时间
-    for job in jobs:
-        job.start_time = current_time
-        print("Time :", current_time)
-        job.pcb.run(echo=True)
-        current_time += job.pcb.need_time
-        job.finish_time = current_time
-    # 输出每个进程的完成时间, 周转时间 ,带权周转时间
-    for j in jobs:
-        print(j)
-    # 计算平均周转时间和平均带权周转时间
-    print("平均周转时间: ", average(jobs, lambda j: j.whole_time))
-    print("平均带权周转时间: ", average(jobs, lambda j: j.weight_time))
-
-    print("!! FCFS FINISHED !!")
-
-
-def sjf(jobs: list):
-    '''模拟SJF调度算法
+    _name = "FCFS"
+    def run(self):
+        # 按照到到达时间模拟执行进程并记录时间
+        for job in jobs:
+            job.start_time = self.timestamp
+            print("Time :", self.timestamp)
+            job.pcb.run(echo=True)
+            self.timestamp += job.pcb.need_time
+            job.finish_time = self.timestamp
+    
+class SJFScheduling(JobScheduling):
+    '''SJF 调度算法的实现
     '''
-    print("!! SJF START !!")
-    current_time = 0
-    # 取得当前到达并且为完成的进程
-    avaivble = list(filter(
-        lambda job: (job.arrive_time <=
-                     current_time) and not job.pcb.is_finish(), jobs))
-    # 将进程按服务时间排序
-    avaivble.sort(key=lambda job: job.pcb.need_time)
-
-    while avaivble:
-        print("Time :", current_time)
-        # 选择服务时间最短的执行
-        job = avaivble[0]
-        job.start_time = current_time
-        job.pcb.run(echo=True)
-        current_time += job.pcb.need_time
-        job.finish_time = current_time
-
-        avaivble = list(filter(lambda job: (job.arrive_time <=
-                                            current_time)and not job.pcb.is_finish(), jobs))
+    _name = "SJF"
+    def run(self):
+        # 取得当前到达并且为完成的进程
+        avaivble = list(filter(
+            lambda job: (job.arrive_time <=
+                        self.timestamp) and not job.pcb.is_finish(), jobs))
+        # 将进程按服务时间排序
         avaivble.sort(key=lambda job: job.pcb.need_time)
-   # 输出每个进程的完成时间, 周转时间 ,带权周转时间
-    for j in jobs:
-        print(j)
-    # 计算平均周转时间和平均带权周转时间
-    print("平均周转时间: ", average(jobs, lambda j: j.whole_time))
-    print("平均带权周转时间: ", average(jobs, lambda j: j.weight_time))
-    print("!! SJF FINISHED !!")
 
-def rr(jobs: list,time_slice=2):
-    '''模拟RR调度算法调度程序
+        while avaivble:
+            print("Time :", self.timestamp)
+            # 选择服务时间最短的执行
+            job = avaivble[0]
+            job.start_time = self.timestamp
+            job.pcb.run(echo=True)
+            self.timestamp += job.pcb.need_time
+            job.finish_time = self.timestamp
+
+            avaivble = list(filter(lambda job: (job.arrive_time <=
+                                                self.timestamp)and not job.pcb.is_finish(), jobs))
+            avaivble.sort(key=lambda job: job.pcb.need_time)
+
+class RRScheduling(JobScheduling):
+    '''RR 调度算法的实现
     '''
-    import queue
-    ready_queue = queue.SimpleQueue()
-    for job in jobs:
-        ready_queue.put(job)
-    current_time = 0
-    # 按照到到达时间模拟执行进程并记录时间
-    while not ready_queue.empty():
-        job:JobState = ready_queue.get()
-        print(f"\n时间片:[{current_time}->{current_time+time_slice}]")
-        job.start_time = min((current_time,job.start_time))
-        used=job.pcb.run(time_slice,echo=True)
-        if job.pcb.is_finish():
-            # 
-            job.finish_time = current_time + used
-            print(f"{used!= time_slice and '提前'}结束:{job}")
-        else:
+    _name = "RR"
+    def __init__(self, jobs:list,timestamp=0,time_slice=2):
+        self.jobs = jobs
+        self.timestamp = timestamp
+        self.time_slice = time_slice
+    def run(self):
+        import queue
+        ready_queue = queue.SimpleQueue()
+        for job in jobs:
             ready_queue.put(job)
-        current_time+= used
-    # 输出每个进程的完成时间, 周转时间 ,带权周转时间
-    for j in jobs:
-        print(j)
-    # 计算平均周转时间和平均带权周转时间
-    print("平均周转时间: ", average(jobs, lambda j: j.whole_time))
-    print("平均带权周转时间: ", average(jobs, lambda j: j.weight_time))
+        # 按照到到达时间模拟执行进程并记录时间
+        while not ready_queue.empty():
+            job:JobState = ready_queue.get()
+            print(f"\n时间片:[{self.timestamp}->{self.timestamp+self.time_slice}]")
+            job.start_time = min((self.timestamp,job.start_time))
+            used=job.pcb.run(self.time_slice,echo=True)
+            if job.pcb.is_finish():
+                # 
+                job.finish_time = self.timestamp + used
+                print(f"{used!= self.time_slice and '提前'}结束:{job}")
+            else:
+                ready_queue.put(job)
+            self.timestamp+= used
 
-    print("!! RR FINISHED !!")
 
 if __name__ == "__main__":
     jobs_josn = []
@@ -144,10 +149,15 @@ if __name__ == "__main__":
     # 确保按到达时间排序
     jobs.sort(key=lambda job: job.arrive_time)
     print(jobs)
-    fcfs(jobs)
+    
+    fcfs = FCFSScheduling(jobs)
+    fcfs.launch()
     # 重置状态
     [job.reset() for job in jobs]
 
-    sjf(jobs)
+    sjf= SJFScheduling(jobs)
+    sjf.launch()
     [job.reset() for job in jobs]
-    rr(jobs,4)
+
+    rr =RRScheduling(jobs,time_slice=2)
+    rr.launch()
