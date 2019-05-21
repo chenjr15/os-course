@@ -49,6 +49,8 @@ class Process(object):
 
     def reset(self):
         self.state = State.READY
+        self.runtime = 0
+
 
     @property
     def left_time(self):
