@@ -73,7 +73,7 @@ class JobScheduling:
     def launch(self):
         '''launch this scheduling machine
         '''
-        print("\n",'-'*10,"\n",self._name, "strarted!")
+        print("\n", '-'*10, "\n", self._name, "strarted!")
         self.run()
         # 输出每个进程的完成时间, 周转时间 ,带权周转时间
         for j in self.jobs:
@@ -138,23 +138,34 @@ class RRScheduling(JobScheduling):
 
     def run(self):
         import queue
+        
         ready_queue = queue.SimpleQueue()
+        wait_queue = queue.SimpleQueue()
         for job in jobs:
-            ready_queue.put(job)
+            if job.arrive_time <= self.timestamp:
+                ready_queue.put(job)
+            else:
+                wait_queue.put(job)
         # 按照到到达时间模拟执行进程并记录时间
         while not ready_queue.empty():
             job: JobState = ready_queue.get()
             print(
                 f"\n时间片:[{self.timestamp}->{self.timestamp+self.time_slice}]")
             job.start_time = min((self.timestamp, job.start_time))
-            used = job.pcb.run(self.time_slice, echo=True)
+            used = job.pcb.run(time = self.time_slice, echo=True)
+            self.timestamp += used
+            for i in range(wait_queue.qsize()):
+                j = wait_queue.get()
+                if j.arrive_time <= self.timestamp:
+                    ready_queue.put(j)
+                else:
+                    wait_queue.put(j)
             if job.pcb.is_finish():
                 #
-                job.finish_time = self.timestamp + used
+                job.finish_time = self.timestamp 
                 print(f"{used!= self.time_slice and '提前'}结束:{job}")
             else:
                 ready_queue.put(job)
-            self.timestamp += used
 
 
 class HRRNScheduling(JobScheduling):
@@ -179,7 +190,7 @@ class HRRNScheduling(JobScheduling):
                 if not j:
                     j = job
                 else:
-                    j = max(j,job,key=lambda j: self.get_priority(j))
+                    j = max(j, job, key=lambda j: self.get_priority(j))
             j.start_time = self.timestamp
             self.timestamp += j.pcb.run(echo=True)
             j.finish_time = self.timestamp
@@ -204,7 +215,7 @@ if __name__ == "__main__":
     sjf.launch()
     [job.reset() for job in jobs]
 
-    rr = RRScheduling(jobs, time_slice=2)
+    rr = RRScheduling(jobs, time_slice=1)
     rr.launch()
     [job.reset() for job in jobs]
 
