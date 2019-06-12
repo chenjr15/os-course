@@ -1,4 +1,8 @@
-from dataclasses import dataclass
+try :
+    from dataclasses import dataclass
+except ModuleNotFoundError:
+    print("请使用Python 3.7+运行!")
+    exit(-1)
 from typing import List
 from collections import namedtuple
 from compose.cli.colors import green, red, blue, magenta
@@ -21,7 +25,7 @@ class PageReq:
         return self.addr % PAGE_SIZE
 
     def __str__(self):
-        return f'{self.addr}({"R" if self.isread else "W"}) 页号|offse: {self.get_page_no()}|{self.get_page_offset()}'
+        return f'{self.addr}({"R" if self.isread else "W"}) 页号: {self.get_page_no()}'
 
     def __repr__(self):
         return self.__str__()
@@ -56,6 +60,10 @@ class PageItem(object):
             f'{"A" if  self.accessed else "_"} ' \
             f'{"M" if self.modified else "_" } ' \
             f'next:{self.pointer}>'
+    def __repr__(self):
+        return f'[{self.page_no if self.page_no is not None else "_"}'\
+            f'{"A" if  self.accessed else "_"}' \
+            f'{"M" if self.modified else "_" }]'
 
 
 PhyAddr = namedtuple('PhyAddr', ['Block', 'Offset', 'Address'])
@@ -188,7 +196,7 @@ class Mem:
 
         s += "替换队列:"
         for pi in self.get_replace_generator():
-            s += f' #{self.phy_table.index(pi)},({pi.page_no}) ->'
+            s += f" {self.phy_table.index(pi)}:{repr(pi)} ->"
         s += ' null\n'
 
         s += "空闲队列:"
@@ -221,7 +229,7 @@ def clock_advanced(mem: Mem)->int:
             to_replace = mem.phy_table.index(pi)
             break
     if to_replace < 0:
-        # 没找到, 再找 A = 0 M = 1, 并且边找边清access位
+        # 没找到, 执行第二步. 找 A = 0 M = 1, 并且边找边清access位, 找到就返回
         for pi in mem.get_replace_generator():
             if pi.accessed == False and pi. modified == True:
                 to_replace = mem.phy_table.index(pi)
@@ -229,9 +237,7 @@ def clock_advanced(mem: Mem)->int:
             else:
                 pi.unaccess()
     return to_replace
-
-
-def test():
+def load_test_data():
     # 替换指针
     replace_ptr = 0
     # 空闲指针
@@ -242,16 +248,6 @@ def test():
     mem_info.append(PageItem(None, None, None, 2))
     mem_info.append(PageItem(0, 1, 0, 0))
     mem = Mem(mem_info, replace_ptr, free_ptr)
-    use_clock = False
-    print(red('程序开始'), '使用算法', 'Clock'if use_clock else 'Clock+')
-    print('初始内存状态为:')
-    print(mem)
-
-    page_table = [None for i in range(7)]
-    page_table[0] = 3
-    page_table[1] = 1
-    page_table[4] = 0
-
     page_reqs = []
     page_reqs.append(PageReq(455, True))
     page_reqs.append(PageReq(1029, True))
@@ -263,27 +259,43 @@ def test():
     page_reqs.append(PageReq(6211, True))
     page_reqs.append(PageReq(6897, True))
     page_reqs.append(PageReq(875, False))
+
+    return mem,page_reqs
+
+def main():
+    
+    use_clock = False
+    mem,page_reqs = load_test_data()
+    print(red('####程序开始####'))
+    print('初始内存状态为:')
+    print(mem)
+    choice = input('请选择调度算法 0.Clock 1.改进型Clock :')
+    if choice == '0':
+        use_clock = True
+    print('您选择了', 'Clock'if use_clock else '改进型Clock')
     for req in page_reqs:
+        # 遍历请求
         print('-'*10)
-        print(f"{blue('->')} requst: {req}")
+        print(f"\n{magenta('->')} requst: {req}\n")
         phy_no = None
         phyaddr: PhyAddr
         for p in mem.phy_table:
             if req.get_page_no() == p.page_no:
                 # 该地址在内存中, 直接访问即可
                 # 获取对应物理块号
-                phy_no = mem_info.index(p)
+                phy_no = mem.phy_table.index(p)
                 mem.handle_req(req, phy_no)
         if phy_no is not None:
             phyaddr = mem.get_phy_addr(req)
-            print(f"物理地址为: {green(phyaddr)}")
+            print(blue("命中内存"))
+            print(f"{green(phyaddr)}")
         else:
-            print(f"  该地址不在内存块中, {red('发生缺页中断')}")
+            print(f"该地址不在内存块中, {red('发生缺页中断')}")
             if mem.load_free(req.get_page_no()):
+                print(blue("成功载入空闲内存"))
                 phyaddr = mem.get_phy_addr(req)
-                print(f"物理地址为: {green(phyaddr)}")
+                print(f"{green(phyaddr)}")
                 mem.handle_req(req, phyaddr.Block)
-                print(green("成功载入空闲内存"))
             else:
                 # 尝试替换
                 # clock
@@ -297,15 +309,15 @@ def test():
                     if to_replace < 0:
                         to_replace = clock_advanced(mem)
 
-                print(f"替换物理块{to_replace}")
+                print(blue(f"成功替换物理块{to_replace}"))
                 mem.replace(to_replace, req.get_page_no())
                 mem.handle_req(req, to_replace)
                 # print(mem)
                 phyaddr = mem.get_phy_addr(req)
-                print(f"物理地址为: {green(phyaddr)}")
-        print('当前内存状态为:\n')
+                print(f"{green(phyaddr)}")
+        print('当前内存状态为:')
         print(mem)
 
 
 if __name__ == "__main__":
-    test()
+    main()
