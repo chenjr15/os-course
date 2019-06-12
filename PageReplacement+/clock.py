@@ -37,6 +37,8 @@ class PageItem(object):
     pointer: int
 
     def access(self):
+        
+        print(red(f"尝试设置页号{self.page_no}为访问"))
         self.accessed = True
 
     def modify(self):
@@ -156,12 +158,15 @@ class Mem:
 
     def access(self, index=None):
         if index is None:
+            print(red("尝试设置全部为访问"))
             [pi.access() for pi in self.phy_table]
         else:
             self.phy_table[index].access()
 
     def modify(self, index=None):
         if index is None:
+            print(red("尝试设置全部为修改"))
+
             [pi.modify() for pi in self.phy_table]
         else:
             self.phy_table[index].modify()
@@ -271,7 +276,7 @@ def test():
     mem_info.append(PageItem(None, None, None, 2))
     mem_info.append(PageItem(0, 1, 0, 0))
     mem = Mem(mem_info, replace_ptr, free_ptr)
-    use_clock = True
+    use_clock = False
     print(red('程序开始'), '使用算法为', 'Clock'if use_clock else 'Clock+')
     print(mem)
 
@@ -314,7 +319,7 @@ def test():
             if mem.load_free(req.get_page_no()):
                 phyaddr = mem.get_phy_addr(req)
                 print(f"物理地址为: {green(phyaddr)}")
-                mem.handle_req(req, phy_no)
+                mem.handle_req(req, phyaddr.Block)
                 print(green("成功载入空闲内存"))
             else:
                 # 尝试替换
