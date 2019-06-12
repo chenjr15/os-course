@@ -37,8 +37,7 @@ class PageItem(object):
     pointer: int
 
     def access(self):
-        
-        print(red(f"尝试设置页号{self.page_no}为访问"))
+        # print(red(f"尝试访问{self.page_no}"))
         self.accessed = True
 
     def modify(self):
@@ -59,11 +58,6 @@ class PageItem(object):
             f'next:{self.pointer}>'
 
 
-@dataclass
-class Process:
-    page_table: List[int]
-
-
 PhyAddr = namedtuple('PhyAddr', ['Block', 'Offset', 'Address'])
 PhyAddr.__str__ = lambda self: f'块号: {self.Block} 偏移量: {self.Offset} 物理地址: {self.Address}'
 
@@ -75,6 +69,29 @@ class Mem:
         # 空闲指针
         self.free_ptr = free_ptr
         self.phy_table = mem_info
+
+    def get_generator(self, start=None, length=-1):
+        ''' 返回一个通用生成器, 用来简化 替换队列和空闲队列 的遍历操作
+            start : 生成器的起点
+            length: 最多遍历个数
+        '''
+        count = 0
+        if start is not None and start > -1 and start < len(self.phy_table):
+            first = self.phy_table[start]
+            pi = first
+            yield pi
+            pi = self.phy_table[pi.pointer]
+            while pi != first:
+                yield pi
+                pi = self.phy_table[pi.pointer]
+
+    def get_replace_generator(self):
+        '''返回替换队列的生成器'''
+        return self.get_generator(self.replace_ptr)
+
+    def get_free_generator(self):
+        '''返回空闲队列的生成器'''
+        return self.get_generator(self.free_ptr)
 
     def get_phy_addr(self, req: PageReq):
         '''获得物理地址
@@ -102,17 +119,6 @@ class Mem:
             pi = self.phy_table[pi.pointer]
         return self.phy_table.index(pi)
 
-    def find_pre_item(self, index: int)->PageItem:
-        '''找到指定节点的前驱'''
-        pi = self.phy_table[index]
-        while pi.pointer != index:
-            pi = self.phy_table[pi.pointer]
-        return pi
-
-    def find_pre_item_index(self, index: int)->int:
-        '''找到指定节点的前驱索引'''
-        return self.phy_table.index(self.find_pre_item(index))
-
     def load_free(self,  new_page: int)->bool:
         '''将不在内存的页面调入空闲内存, 仅当内存有空闲块时可用'''
 
@@ -137,23 +143,22 @@ class Mem:
         return True
 
     def replace(self, to_replace: int, new_page: int):
-        # if not self.phy_table[to_replace].page_no:
-        #     print("不能替换空闲页")
-        #     return False
+        if self.phy_table[to_replace].page_no is None:
+            print(red("不能替换空闲页!"))
+            return False
 
         replace_item = self.phy_table[to_replace]
+        # 让队头指针指向需要替换页面的下一个页面, 下一次就从那个页面开始替换
+        # 然后原来第一个页面就自动变成队列的尾部(因为是循环队列/链表)
         self.replace_ptr = replace_item.pointer
-        # # 让上一个指向下一个
-        # self.phy_table[last_index].pointer = replace_item.pointer
-        print(magenta(self))
-        # 将新页面插入队尾
+        # print(magenta(self))
+        # 将新页面换入, 并让其指向队头(就是原来的下一个)
         self.phy_table[to_replace] = PageItem(
             page_no=new_page,
             accessed=False,
             modified=False,
             pointer=replace_item.pointer
         )
-        # self.phy_table[last_index].pointer = index
         return True
 
     def access(self, index=None):
@@ -180,28 +185,16 @@ class Mem:
         s = ''
         for i in range(len(self.phy_table)):
             s += f'{i} : {self.phy_table[i]}\n'
-        if self.replace_ptr is not None:
-            s += "replace list:"
-            pi = self.first_replace
-            s += f' {self.phy_table.index(pi)}@{pi}'
-            pi = self.phy_table[pi.pointer]
-            while pi != self.first_replace:
-                s += f' {self.phy_table.index(pi)}@{pi}'
-                pi = self.phy_table[pi.pointer]
-            s += '\n'
-        else:
-            s += '可替换队列为空\n'
-        if self.free_ptr is not None:
-            s += "free list:"
-            pi = self.phy_table[self.free_ptr]
-            s += f' {self.phy_table.index(pi)}@{pi}'
-            pi = self.phy_table[pi.pointer]
-            while pi != self.phy_table[self.free_ptr]:
-                s += f' {self.phy_table.index(pi)}@{pi}'
-                pi = self.phy_table[pi.pointer]
-            s += '\n'
-        else:
-            s += '空闲队列为空\n'
+
+        s += "替换队列:"
+        for pi in self.get_replace_generator():
+            s += f' #{self.phy_table.index(pi)},({pi.page_no}) ->'
+        s += ' null\n'
+
+        s += "空闲队列:"
+        for pi in self.get_free_generator():
+            s += f' #{self.phy_table.index(pi)} ->'
+        s += ' null\n'
         return s
 
 
@@ -209,59 +202,32 @@ def clock(mem: Mem)->int:
     '''Clock 置换算法 返回可以被置换的页面索引'''
     to_replace: int = -1
     # 这里肯定是页面不在内存的情况
-    pi = mem.phy_table[mem.replace_ptr]
-    if pi.accessed:
-        pi.unaccess()
-    else:
-        to_replace = mem.phy_table.index(pi)
-        return to_replace
-        pi = mem.phy_table[pi.pointer]
-    while pi != mem.first_replace:
+    # 遍历页面 如果有未被访问的块, 这返回该块索引, 对被访问过的块则清除其访问位
+    for pi in mem.get_replace_generator():
         if pi.accessed:
             pi.unaccess()
-            return to_replace
         else:
             to_replace = mem.phy_table.index(pi)
-        pi = mem.phy_table[pi.pointer]
+            break
     return to_replace
 
 
 def clock_advanced(mem: Mem)->int:
     '''Clock 置换算法 返回可以被置换的页面索引'''
     to_replace: int = -1
-    # 这里肯定是页面不在内存的情况
-    pi = mem.phy_table[mem.replace_ptr]
-    # 第一步
-    if pi.accessed or pi.modified:
-        pi = mem.phy_table[pi.pointer]
-    else:
-        # A=0 M = 0
-        to_replace = mem.phy_table.index(pi)
-        return to_replace
-    
-    while pi != mem.first_replace:
-        if pi.accessed or pi.modified:
-            pass
-        else:
-            # A=0 M = 0
+    # 第一步 寻找A = 0 M = 0 找到就返回该页做替换
+    for pi in mem.get_replace_generator():
+        if pi.accessed == False and pi. modified == False:
             to_replace = mem.phy_table.index(pi)
-            return to_replace
-        pi = mem.phy_table[pi.pointer]
-    # 第二步
-    pi = mem.phy_table[mem.replace_ptr]
-    if not pi.accessed and pi.modified:
-        # A = 1 M = 0
-        to_replace = mem.phy_table.index(pi)
-        return to_replace
-    pi.unaccess()
-    pi = mem.phy_table[pi.pointer]
-    while pi != mem.first_replace:
-        if not pi.accessed and pi.modified:
-            # A = 1 M = 0
-            to_replace = mem.phy_table.index(pi)
-            return to_replace
-        pi.unaccess()
-        pi = mem.phy_table[pi.pointer]
+            break
+    if to_replace < 0:
+        # 没找到, 再找 A = 0 M = 1, 并且边找边清access位
+        for pi in mem.get_replace_generator():
+            if pi.accessed == False and pi. modified == True:
+                to_replace = mem.phy_table.index(pi)
+                break
+            else:
+                pi.unaccess()
     return to_replace
 
 
@@ -277,12 +243,9 @@ def test():
     mem_info.append(PageItem(0, 1, 0, 0))
     mem = Mem(mem_info, replace_ptr, free_ptr)
     use_clock = False
-    print(red('程序开始'), '使用算法为', 'Clock'if use_clock else 'Clock+')
+    print(red('程序开始'), '使用算法', 'Clock'if use_clock else 'Clock+')
+    print('初始内存状态为:')
     print(mem)
-
-    # print(mem.load_free(5), mem)
-    # print(mem.load_free(6), '\n', mem)
-    # print(mem.replace(1, 6), '\n', mem)
 
     page_table = [None for i in range(7)]
     page_table[0] = 3
@@ -307,7 +270,7 @@ def test():
         phyaddr: PhyAddr
         for p in mem.phy_table:
             if req.get_page_no() == p.page_no:
-                # 改地址在内存中, 直接访问即可
+                # 该地址在内存中, 直接访问即可
                 # 获取对应物理块号
                 phy_no = mem_info.index(p)
                 mem.handle_req(req, phy_no)
@@ -330,13 +293,10 @@ def test():
                         to_replace = clock(mem)
                 else:
                     to_replace: int = clock_advanced(mem)
-                    
+
                     if to_replace < 0:
-                        print("clock 改进 第一轮和第二轮")
-                        print(mem)
                         to_replace = clock_advanced(mem)
-                        print(mem)
-                
+
                 print(f"替换物理块{to_replace}")
                 mem.replace(to_replace, req.get_page_no())
                 mem.handle_req(req, to_replace)
