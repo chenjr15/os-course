@@ -158,14 +158,14 @@ class Mem:
 
     def access(self, index=None):
         if index is None:
-            print(red("尝试设置全部为访问"))
+            print(red("尝试访问全部"))
             [pi.access() for pi in self.phy_table]
         else:
             self.phy_table[index].access()
 
     def modify(self, index=None):
         if index is None:
-            print(red("尝试设置全部为修改"))
+            print(red("尝试修改全部"))
 
             [pi.modify() for pi in self.phy_table]
         else:
